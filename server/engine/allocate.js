@@ -1,8 +1,24 @@
 'use strict';
 const { D, money } = require('./money');
+const { daysBetween } = require('./dates');
 
 // All inputs use normalized camelCase fields supplied by a schema-specific adapter.
 function allocateFIFO(schedule, payments, asOfDate) {
+  daysBetween(asOfDate, asOfDate);
+  const scheduleIds = new Set();
+  for (const row of schedule) {
+    daysBetween(row.dueDate, row.dueDate);
+    if (!Number.isInteger(row.instalmentNo) || row.instalmentNo < 1 || scheduleIds.has(row.instalmentNo) || D(row.emiAmount).lte(0)) {
+      throw new Error('Invalid or duplicate schedule instalment');
+    }
+    scheduleIds.add(row.instalmentNo);
+  }
+  const paymentIds = new Set();
+  for (const payment of payments) {
+    daysBetween(payment.paymentDate, payment.paymentDate);
+    if (!payment.paymentId || paymentIds.has(payment.paymentId) || D(payment.amount).lte(0)) throw new Error('Invalid or duplicate payment');
+    paymentIds.add(payment.paymentId);
+  }
   const instalments = [...schedule]
     .sort((a,b) => a.instalmentNo - b.instalmentNo)
     .map(row => ({
