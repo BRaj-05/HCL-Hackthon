@@ -1,0 +1,10 @@
+export const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+export const money = (value, compact = false) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(value);
+export const number = (value) => new Intl.NumberFormat('en-IN').format(value);
+export const date = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(value.length === 10 ? value + 'T00:00:00+05:30' : value)) : '—';
+export const timestamp = (value) => new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }).format(new Date(value));
+export const initials = (name) => name.split(' ').map(part => part[0]).slice(0, 2).join('');
+export const addDays = (value, days) => { const d = new Date(value + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+export const dayDiff = (from, to) => Math.floor((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000);
+export const uniqueId = (prefix) => prefix + '-' + crypto.randomUUID();
+export const errorMessage = (error) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
