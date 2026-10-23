@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  WRITTEN_OFF
+  HOLD
+}
+
+enum ScheduleStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  RECONCILED
+  REJECTED
+  REVERSED
+}
+
+enum ContactChannel {
+  CALL
+  SMS
+  WHATSAPP
+  EMAIL
+  VISIT
+  OTHER
+}
+
+enum ContactOutcome {
+  CONNECTED
+  NO_ANSWER
+  WRONG_NUMBER
+  REFUSED
+  PROMISE_TO_PAY
+  OTHER
+}
+
+enum PtpStatus {
+  OPEN
+  KEPT
+  BROKEN
+  CANCELLED
+}
+
+enum SettlementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model Loan {
+  id                  String       @id @default(cuid())
+  loanNumber          String       @unique @map("loan_number")
+  customerId          String       @map("customer_id")
+  product             String?
+  principalAmount     Decimal      @db.Decimal(14, 2) @map("principal_amount")
+  interestRate        Decimal?     @db.Decimal(7, 4) @map("interest_rate")
+  disbursedAt         DateTime?    @map("disbursed_at")
+  maturityDate        DateTime?    @map("maturity_date")
+  status              LoanStatus   @default(ACTIVE)
+  assignedCollectorId String?      @map("assigned_collector_id")
+  asOfDate            DateTime?    @map("as_of_date")
+  principalBalance    Decimal      @default(0) @db.Decimal(14, 2) @map("principal_balance")
+  interestBalance     Decimal      @default(0) @db.Decimal(14, 2) @map("interest_balance")
+  penalBalance        Decimal      @default(0) @db.Decimal(14, 2) @map("penal_balance")
+  totalDue            Decimal      @default(0) @db.Decimal(14, 2) @map("total_due")
+  overdueAmount       Decimal      @default(0) @db.Decimal(14, 2) @map("overdue_amount")
+  dpd                 Int          @default(0)
+  bucket              String       @default("CURRENT")
+  isOnHold            Boolean      @default(false) @map("is_on_hold")
+  holdReason          String?      @map("hold_reason")
+  holdUntil           DateTime?    @map("hold_until")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  schedules           Schedule[]
+  payments            Payment[]
+  contacts            Contact[]
+  settlements         Settlement[]
+  scores              Score[]
+
+  @@index([customerId])
+  @@index([status, bucket, assignedCollectorId])
+  @@map("loans")
+}
+
+model Schedule {
+  id                String         @id @default(cuid())
+  loanId            String         @map("loan_id")
+  installmentNumber Int            @map("installment_number")
+  dueDate           DateTime       @map("due_date")
+  principalDue      Decimal        @default(0) @db.Decimal(14, 2) @map("principal_due")
+  interestDue       Decimal        @default(0) @db.Decimal(14, 2) @map("interest_due")
+  penalDue          Decimal        @default(0) @db.Decimal(14, 2) @map("penal_due")
+  totalDue          Decimal        @db.Decimal(14, 2) @map("total_due")
+  paidAmount        Decimal        @default(0) @db.Decimal(14, 2) @map("paid_amount")
+  status            ScheduleStatus @default(PENDING)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  loan              Loan           @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  allocations       PaymentAllocation[]
+
+  @@unique([loanId, installmentNumber])
+  @@index([dueDate, status])
+  @@map("schedules")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  loanId            String        @map("loan_id")
+  externalReference String        @unique @map("external_reference")
+  amount            Decimal       @db.Decimal(14, 2)
+  paidAt            DateTime      @map("paid_at")
+  receivedAt        DateTime?     @map("received_at")
+  mode              PaymentMode   @default(OTHER)
+  status            PaymentStatus @default(PENDING)
+  importBatchId     String?       @map("import_batch_id")
+  rawRecord         Json?         @map("raw_record")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  loan              Loan          @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  allocations       PaymentAllocation[]
+
+  @@index([loanId])
+  @@index([paidAt])
+  @@index([status])
+  @@index([importBatchId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String   @map("payment_id")
+  scheduleId  String   @map("schedule_id")
+  principal   Decimal  @default(0) @db.Decimal(14, 2)
+  interest    Decimal  @default(0) @db.Decimal(14, 2)
+  penal       Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, scheduleId])
+  @@map("payment_allocations")
+}
+
+model Contact {
+  id                        String         @id @default(cuid())
+  loanId                    String         @map("loan_id")
+  collectorId               String         @map("collector_id")
+  contactedAt               DateTime       @default(now()) @map("contacted_at")
+  channel                   ContactChannel
+  outcome                   ContactOutcome
+  notes                     String?
+  consentConfirmed          Boolean        @default(false) @map("consent_confirmed")
+  contactWithinAllowedHours Boolean        @default(true) @map("contact_within_allowed_hours")
+  breachReason              String?        @map("breach_reason")
+  promisedAmount            Decimal?       @db.Decimal(14, 2) @map("promised_amount")
+  promisedDate              DateTime?      @map("promised_date")
+  ptpStatus                 PtpStatus?     @map("ptp_status")
+  createdAt                 DateTime       @default(now()) @map("created_at")
+  updatedAt                 DateTime       @updatedAt @map("updated_at")
+  loan                      Loan           @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId, ptpStatus, promisedDate])
+  @@index([collectorId, contactedAt])
+  @@map("contacts")
+}
+
+model Settlement {
+  id              String           @id @default(cuid())
+  loanId          String           @map("loan_id")
+  proposedBy      String           @map("proposed_by")
+  proposedAt      DateTime         @default(now()) @map("proposed_at")
+  requestedAmount Decimal          @db.Decimal(14, 2) @map("requested_amount")
+  approvedAmount  Decimal?         @db.Decimal(14, 2) @map("approved_amount")
+  expiryDate      DateTime?        @map("expiry_date")
+  reason          String
+  status          SettlementStatus @default(PENDING)
+  checkedBy       String?          @map("checked_by")
+  checkedAt       DateTime?        @map("checked_at")
+  checkerNote     String?          @map("checker_note")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  loan            Loan             @relation(fields: [loanId], references: [id], onDelete: Restrict)
+
+  @@index([loanId, status, createdAt])
+  @@map("settlements")
+}
+
+model Score {
+  id               String   @id @default(cuid())
+  loanId           String   @map("loan_id")
+  asOfDate         DateTime @map("as_of_date")
+  modelVersion     String   @map("model_version")
+  missProbability  Decimal  @db.Decimal(6, 5) @map("miss_probability")
+  expectedRecovery Decimal? @db.Decimal(14, 2) @map("expected_recovery")
+  topReasons       String[] @map("top_reasons")
+  featureSnapshot  Json?    @map("feature_snapshot")
+  createdAt        DateTime @default(now()) @map("created_at")
+  loan             Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, asOfDate, modelVersion])
+  @@index([asOfDate, expectedRecovery])
+  @@map("scores")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  before     Json?
+  after      Json?
+  metadata   Json?
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  eventType     String       @map("event_type")
+  aggregateType String       @map("aggregate_type")
+  aggregateId   String       @map("aggregate_id")
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now()) @map("available_at")
+  processedAt   DateTime?    @map("processed_at")
+  lastError     String?      @map("last_error")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([status, availableAt])
+  @@index([eventType])
+  @@index([aggregateId])
+  @@map("outbox_events")
+}
+
+model AppConfig {
+  key         String   @id
+  value       Json
+  description String?
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("app_config")
+}
