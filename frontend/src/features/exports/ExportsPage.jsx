@@ -1,0 +1,15 @@
+import { useState } from 'react';
+import { Download, FileCheck2, FileSpreadsheet } from 'lucide-react';
+import { useWorkspace } from '../../app/WorkspaceProvider';
+import { useAuth } from '../auth/AuthProvider';
+import { gateway } from '../../services/gateway';
+import { can } from '../../lib/permissions';
+import { download } from '../../lib/csv';
+import { date, money } from '../../lib/format';
+import { Empty, Notice, PageHeader, Panel, Table } from '../../components/ui';
+export function ExportsPage() {
+  const {data,act,busy}=useWorkspace();const {session}=useAuth();const [kind,setKind]=useState('collections');if(!data)return null;
+  const allowed=can(session.user,'data:export');
+  const exportFile=async type=>{let csv='';if(await act(async()=>{csv=await gateway.export(session.user,type);},'Report downloaded and export recorded.'))download(csv,type+'-'+data.asOf+'.csv');};
+  return <><PageHeader eyebrow="READY TO REPORT" title="Export reports" description="Take a consistent snapshot of collection positions and settlement outcomes."/><Notice>Exports reflect the last calculated as-of date, {date(data.asOf)}. Run day-end after imports before generating evaluation files. CSV values are escaped to prevent spreadsheet formula execution.</Notice>{!allowed&&<Notice tone="warning">Exports are available to managers, collections heads, and auditors.</Notice>}<div className="two-column">{[{id:'collections',title:'Collections output',icon:FileSpreadsheet,text:'Account positions, FIFO balances, DPD, buckets, dues, penal charges, priority and assignment.',count:data.loans.length},{id:'settlements',title:'Settlement output',icon:FileCheck2,text:'Offers, due dates, approval decisions, maker-checker references, and payment outcomes.',count:data.settlements.length}].map(({id,title,icon:Icon,text,count})=><Panel key={id} className="export-card"><span className={'export-icon '+(id==='collections'?'mint':'blue')}><Icon size={27}/></span><h2>{title}</h2><p>{text}</p><div className="export-meta"><span>{count} records</span><span>CSV · {date(data.asOf)}</span></div><button className="button primary" disabled={!allowed||busy} onClick={()=>void exportFile(id)}><Download size={16}/>Download CSV</button></Panel>)}</div><Panel className="spaced" title="Report preview" subtitle="A quick look at the current workspace snapshot" action={<select aria-label="Report preview type" value={kind} onChange={e=>setKind(e.target.value)}><option value="collections">Collections</option><option value="settlements">Settlements</option></select>}>{kind==='collections'?(data.loans.length?<Table headers={['Loan ID','Borrower','Dues','DPD','Bucket','Strategy']}>{data.loans.slice(0,5).map(l=><tr key={l.id}><td>{l.id}</td><td>{l.borrower}</td><td>{money(l.dues)}</td><td>{l.dpd}</td><td>{l.bucket}</td><td>{l.strategy}</td></tr>)}</Table>:<Empty/>):(data.settlements.length?<Table headers={['Settlement ID','Loan ID','Offer','Due date','Status']}>{data.settlements.slice(0,5).map(s=><tr key={s.id}><td>{s.id}</td><td>{s.loanId}</td><td>{money(s.amount)}</td><td>{date(s.dueDate)}</td><td>{s.status}</td></tr>)}</Table>:<Empty/>)}</Panel></>;
+}
